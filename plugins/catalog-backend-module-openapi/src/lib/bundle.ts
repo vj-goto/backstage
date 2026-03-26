@@ -75,9 +75,9 @@ export async function bundleFileWithRefs(
          * Fall back to the root baseUrl if the parent isn't in the map yet
          * (this correctly handles depth-1 refs from the root document).
          */
-        const parentActualUrl = file.baseUrl
-          ? resolvedUrlMap.get(file.baseUrl) ?? baseUrl
-          : baseUrl;
+        const baseUrlKey = file.baseUrl?.split('#')[0];
+        const parentActualUrl =
+          (baseUrlKey ? resolvedUrlMap.get(baseUrlKey) : undefined) ?? baseUrl;
         actualUrl = resolveUrl(file.reference, parentActualUrl);
       } else {
         /**
@@ -109,7 +109,10 @@ export async function bundleFileWithRefs(
          * Important for SCM providers (e.g. Azure DevOps) that use query params
          * instead of path segments — the parent's real URL must be the base.
          */
-        const parentActualUrl = resolvedUrlMap.get(ref.baseUrl) ?? baseUrl;
+        const parentBaseKey = ref.baseUrl?.split('#')[0];
+        const parentActualUrl =
+          (parentBaseKey ? resolvedUrlMap.get(parentBaseKey) : undefined) ??
+          baseUrl;
         actualUrl = resolveUrl(ref.reference, parentActualUrl);
       } else {
         // FALLBACK
