@@ -537,7 +537,7 @@ describe('bundleFileWithRefs - nested $ref resolution using file.reference (issu
   const scmIntegrations = ScmIntegrations.fromConfig(mockServices.rootConfig());
 
   /**
-   * Uses real SCmIntegrations.resolveUrl so that URL computation in the
+   * Uses real ScmIntegrations.resolveUrl so that URL computation in the
    * resolvedUrlMap is realistic and predictable across tests.
    */
   const resolveUrl: BundlerResolveUrl = jest.fn(
