@@ -54,15 +54,46 @@ export async function bundleFileWithRefs(
   read: BundlerRead,
   resolveUrl: BundlerResolveUrl,
 ): Promise<string> {
+  const resolvedUrlMap = new Map<string, string>();
+
   const fileUrlReaderResolver: ResolverOptions = {
     canRead: file => {
       const protocol = getProtocol(file.url);
       return protocol === undefined || protocol === 'file';
     },
     read: async file => {
-      const relativePath = path.relative('.', file.url).replace(/\\/g, '/');
-      const url = resolveUrl(relativePath, baseUrl);
-      return await read(url);
+      let actualUrl: string;
+      if (file.reference !== undefined) {
+        /**
+         * NEW BEHAVIOR (requires json-schema-ref-parser fix from issue #418):
+         * Use the original $ref string and resolve it against the parent's real SCM URL.
+         *
+         * file.reference  = original $ref, e.g. "./../../common/specs/common.yaml"
+         * file.baseUrl    = parent document's fake internal URL
+         *
+         * Look up the parent's REAL SCM URL from our tracking map.
+         * Fall back to the root baseUrl if the parent isn't in the map yet
+         * (this correctly handles depth-1 refs from the root document).
+         */
+        const parentActualUrl = file.baseUrl
+          ? resolvedUrlMap.get(file.baseUrl) ?? baseUrl
+          : baseUrl;
+        actualUrl = resolveUrl(file.reference, parentActualUrl);
+      } else {
+        /**
+         * FALLBACK: old behavior for backward compatibility with older
+         * library versions that don't yet expose file.reference.
+         */
+        const relativePath = path.relative('.', file.url).replace(/\\/g, '/');
+        actualUrl = resolveUrl(relativePath, baseUrl);
+      }
+      /**
+       * Store the mapping: fake library URL → real SCM URL
+       * This enables correct resolution of any nested $refs inside this file.
+       */
+      resolvedUrlMap.set(file.url, actualUrl);
+
+      return await read(actualUrl);
     },
   };
   const httpUrlReaderResolver: ResolverOptions = {
@@ -71,8 +102,22 @@ export async function bundleFileWithRefs(
       return protocol === 'http' || protocol === 'https';
     },
     read: async ref => {
-      const url = resolveUrl(ref.url, baseUrl);
-      return await read(url);
+      let actualUrl: string;
+      if (ref.reference !== undefined && ref.baseUrl !== undefined) {
+        /**
+         * NEW BEHAVIOR: resolve original reference against parent's real URL.
+         * Important for SCM providers (e.g. Azure DevOps) that use query params
+         * instead of path segments — the parent's real URL must be the base.
+         */
+        const parentActualUrl = resolvedUrlMap.get(ref.baseUrl) ?? baseUrl;
+        actualUrl = resolveUrl(ref.reference, parentActualUrl);
+      } else {
+        // FALLBACK
+        actualUrl = resolveUrl(ref.url, baseUrl);
+      }
+
+      resolvedUrlMap.set(ref.url, actualUrl);
+      return await read(actualUrl);
     },
   };
   const options: ParserOptions = {
